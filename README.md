@@ -1,7 +1,3 @@
-# pco-validador-archivos
-Herramienta que permite cargar o pegar contenidos de archivos JSON, XML o YAML, previsualizarlos y validar su sintaxis.  Permite formatearlos y convertirlos a los demás formatos
-
-
 # ![](https://github.com/unix4you2/practico/raw/master/img/logo.png) Validador de Sintaxis (JSON, XML, YAML)
 
 Este es un proyecto derivado de [Práctico Framework](https://www.practico.org//) articulable como plugin o complemento
