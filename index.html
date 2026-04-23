@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Validador y Convertidor de Datos (XML/JSON/YAML)</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Libraries -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xml-js@1.6.11/dist/index.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Fonts -->
+    <link href="https://cdn.jsdelivr.net/npm/@fontsource/inter@4.5.10/index.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .tree-node { margin-left: 1.25rem; border-left: 1px solid #e5e7eb; padding-left: 0.5rem; }
+        .tree-key { font-weight: 600; color: #4b5563; }
+        .tree-string { color: #059669; }
+        .tree-number { color: #2563eb; }
+        .tree-boolean { color: #d946ef; }
+        .tree-null { color: #9ca3af; font-style: italic; }
+        
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+
+        .code-preview { font-family: 'Courier New', Courier, monospace; white-space: pre-wrap; word-break: break-all; }
+        
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in-up { animation: fadeInUp 0.3s ease-out; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm z-10">
+        <div class="flex items-center gap-3">
+            <div class="bg-blue-600 text-white p-2 rounded-lg">
+                <i class="fa-solid fa-file-code text-xl"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold text-slate-800">DataValidator Pro</h1>
+                <p class="text-xs text-slate-500">Validación de Sintaxis y Conversión de Formatos</p>
+            </div>
+        </div>
+        <div class="flex gap-2">
+            <button onclick="clearAll()" class="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-md transition">
+                <i class="fa-solid fa-trash mr-2"></i>Limpiar
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 flex flex-col md:flex-row overflow-hidden">
+        
+        <!-- Left Panel: Input -->
+        <section class="w-full md:w-1/2 flex flex-col border-r border-slate-200 bg-white">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h2 class="font-semibold text-slate-700"><i class="fa-solid fa-pen-to-square mr-2"></i>Entrada de Datos</h2>
+                <div class="flex gap-2">
+                    <select id="inputFormat" class="text-xs border border-slate-300 rounded px-2 py-1 bg-white focus:outline-none focus:border-blue-500">
+                        <option value="auto">Detectar Automáticamente</option>
+                        <option value="json">JSON</option>
+                        <option value="xml">XML</option>
+                        <option value="yaml">YAML</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex-1 relative group">
+                <textarea id="inputData" class="w-full h-full p-4 resize-none focus:outline-none code-preview text-sm leading-relaxed" placeholder="Pega tu contenido aquí o arrastra un archivo..."></textarea>
+                
+                <!-- File Upload Overlay -->
+                <div id="dropZone" class="absolute inset-0 bg-white/90 backdrop-blur-sm border-2 border-dashed border-blue-400 rounded-lg m-4 flex flex-col items-center justify-center opacity-0 pointer-events-none transition-opacity duration-200 z-20">
+                    <i class="fa-solid fa-cloud-arrow-up text-4xl text-blue-500 mb-2"></i>
+                    <p class="text-blue-600 font-medium">Suelta el archivo aquí</p>
+                </div>
+                
+                <input type="file" id="fileInput" class="hidden" accept=".json,.xml,.yaml,.yml,.txt">
+            </div>
+
+            <div class="p-4 border-t border-slate-200 bg-slate-50 flex justify-between items-center">
+                <button onclick="document.getElementById('fileInput').click()" class="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center">
+                    <i class="fa-solid fa-upload mr-2"></i>Cargar Archivo
+                </button>
+                <button onclick="validateAndParse()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg shadow-md transition transform active:scale-95 font-medium flex items-center">
+                    <i class="fa-solid fa-check-double mr-2"></i>Validar y Procesar
+                </button>
+            </div>
+        </section>
+
+        <!-- Right Panel: Output -->
+        <section class="w-full md:w-1/2 flex flex-col bg-slate-50">
+            <!-- Toolbar -->
+            <div class="p-4 border-b border-slate-200 bg-white flex flex-wrap gap-2 items-center justify-between">
+                <div class="flex bg-slate-100 p-1 rounded-lg">
+                    <button onclick="switchView('tree')" id="btn-tree" class="px-3 py-1 text-xs font-medium rounded-md bg-white shadow-sm text-blue-600 transition">Árbol</button>
+                    <button onclick="switchView('table')" id="btn-table" class="px-3 py-1 text-xs font-medium rounded-md text-slate-600 hover:bg-slate-200 transition">Tabla</button>
+                    <button onclick="switchView('raw')" id="btn-raw" class="px-3 py-1 text-xs font-medium rounded-md text-slate-600 hover:bg-slate-200 transition">Raw</button>
+                </div>
+
+                <div class="flex gap-2">
+                    <div class="relative group">
+                        <button class="bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-md text-sm hover:bg-slate-50 flex items-center shadow-sm">
+                            <i class="fa-solid fa-arrow-right-arrow-left mr-2"></i>Convertir
+                        </button>
+                        <div class="absolute right-0 mt-2 w-40 bg-white rounded-md shadow-lg border border-slate-100 hidden group-hover:block z-30">
+                            <a href="#" onclick="event.preventDefault(); convertOutput('json')" class="block px-4 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-600">A JSON</a>
+                            <a href="#" onclick="event.preventDefault(); convertOutput('xml')" class="block px-4 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-600">A XML</a>
+                            <a href="#" onclick="event.preventDefault(); convertOutput('yaml')" class="block px-4 py-2 text-sm text-slate-700 hover:bg-blue-50 hover:text-blue-600">A YAML</a>
+                        </div>
+                    </div>
+                    <button onclick="downloadExcel()" class="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-sm flex items-center shadow-sm transition">
+                        <i class="fa-solid fa-file-excel mr-2"></i>Excel
+                    </button>
+                </div>
+            </div>
+
+            <!-- Status Bar -->
+            <div id="statusBar" class="px-4 py-2 text-xs font-mono bg-slate-800 text-slate-300 flex justify-between items-center">
+                <span>Estado: Esperando entrada...</span>
+                <span id="formatBadge" class="px-2 py-0.5 rounded bg-slate-700 text-slate-400">--</span>
+            </div>
+
+            <!-- Content Area -->
+            <div class="flex-1 overflow-auto p-4 relative" id="outputContainer">
+                <!-- Dynamic Content Injected Here -->
+                <div class="h-full flex flex-col items-center justify-center text-slate-400">
+                    <i class="fa-solid fa-layer-group text-6xl mb-4 opacity-20"></i>
+                    <p>Los datos procesados aparecerán aquí</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Error Modal -->
+    <div id="errorModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center backdrop-blur-sm">
+        <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden animate-fade-in-up">
+            <div class="bg-red-50 px-6 py-4 border-b border-red-100 flex justify-between items-center">
+                <h3 class="text-red-800 font-bold flex items-center">
+                    <i class="fa-solid fa-triangle-exclamation mr-2"></i> Error de Sintaxis
+                </h3>
+                <button onclick="closeError()" class="text-red-400 hover:text-red-600"><i class="fa-solid fa-xmark text-xl"></i></button>
+            </div>
+            <div class="p-6">
+                <p class="text-sm text-slate-600 mb-4">Se detectaron errores al analizar el archivo. Por favor revisa los detalles:</p>
+                <div class="bg-slate-50 border border-slate-200 rounded-lg p-4 font-mono text-xs text-red-600 overflow-auto max-h-60" id="errorContent"></div>
+                <div class="mt-4 text-xs text-slate-500 bg-blue-50 p-3 rounded border border-blue-100">
+                    <strong>Nota:</strong> Las referencias RFC mencionadas se basan en los estándares ECMA-404 (JSON), RFC 7951 (JSON Encoding) y W3C XML Recommendation.
+                </div>
+            </div>
+            <div class="px-6 py-4 bg-slate-50 border-t border-slate-100 text-right">
+                <button onclick="closeError()" class="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm hover:bg-slate-700">Entendido</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // State
+        let currentData = null;
+        let currentFormat = null;
+        let parsedObject = null;
+
+        // DOM Elements
+        const inputData = document.getElementById('inputData');
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const outputContainer = document.getElementById('outputContainer');
+        const statusBar = document.getElementById('statusBar');
+        const formatBadge = document.getElementById('formatBadge');
+        const errorModal = document.getElementById('errorModal');
+        const errorContent = document.getElementById('errorContent');
+
+        // XML-JS Library Wrapper (handles different CDN exports)
+        const xmlJsLib = (function() {
+            if (typeof xml2js !== 'undefined' && typeof js2xml !== 'undefined') {
+                return { xml2js, js2xml };
+            }
+            if (typeof window.xml2js !== 'undefined' && typeof window.js2xml !== 'undefined') {
+                return { xml2js: window.xml2js, js2xml: window.js2xml };
+            }
+            // Fallback: manual XML parsing
+            return null;
+        })();
+
+        // --- Event Listeners ---
+
+        // Drag & Drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        document.body.addEventListener('dragenter', () => dropZone.classList.remove('opacity-0', 'pointer-events-none'));
+        document.body.addEventListener('dragleave', (e) => {
+            if (e.relatedTarget === null) {
+                dropZone.classList.add('opacity-0', 'pointer-events-none');
+            }
+        });
+        dropZone.addEventListener('dragleave', () => dropZone.classList.add('opacity-0', 'pointer-events-none'));
+        
+        document.body.addEventListener('drop', handleDrop);
+
+        function handleDrop(e) {
+            dropZone.classList.add('opacity-0', 'pointer-events-none');
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) handleFile(files[0]);
+        }
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) handleFile(e.target.files[0]);
+        });
+
+        function handleFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                inputData.value = e.target.result;
+                const ext = file.name.split('.').pop().toLowerCase();
+                const select = document.getElementById('inputFormat');
+                if (['json', 'xml', 'yaml', 'yml'].includes(ext)) {
+                    select.value = ext === 'yml' ? 'yaml' : ext;
+                } else {
+                    select.value = 'auto';
+                }
+                validateAndParse();
+            };
+            reader.readAsText(file);
+        }
+
+        // --- XML Parsing Functions ---
+
+        function parseXML(xmlString) {
+            if (xmlJsLib) {
+                const options = { compact: false, spaces: 4, ignoreDeclaration: true };
+                return xmlJsLib.xml2js(xmlString, options);
+            }
+            
+            // Fallback: Manual XML to JS conversion using DOMParser
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(xmlString, "text/xml");
+            const parseError = xmlDoc.getElementsByTagName("parsererror")[0];
+            if (parseError) {
+                throw new Error(`XML Parsing Error: ${parseError.textContent}`);
+            }
+            return xmlDomToObject(xmlDoc.documentElement);
+        }
+
+        function xmlDomToObject(node) {
+            const obj = {};
+            
+            if (node.attributes && node.attributes.length > 0) {
+                obj._attributes = {};
+                for (let attr of node.attributes) {
+                    obj._attributes[attr.name] = attr.value;
+                }
+            }
+            
+            if (node.childNodes && node.childNodes.length > 0) {
+                for (let child of node.childNodes) {
+                    if (child.nodeType === 1) { // Element
+                        const childObj = xmlDomToObject(child);
+                        if (obj[child.nodeName]) {
+                            if (!Array.isArray(obj[child.nodeName])) {
+                                obj[child.nodeName] = [obj[child.nodeName]];
+                            }
+                            obj[child.nodeName].push(childObj);
+                        } else {
+                            obj[child.nodeName] = childObj;
+                        }
+                    } else if (child.nodeType === 3 && child.textContent.trim()) { // Text
+                        obj._text = child.textContent.trim();
+                    }
+                }
+            }
+            
+            if (Object.keys(obj).length === 0 && node.textContent) {
+                return node.textContent.trim();
+            }
+            
+            obj._name = node.nodeName;
+            return obj;
+        }
+
+        function convertToXML(jsObject) {
+            if (xmlJsLib) {
+                const options = { compact: false, spaces: 4 };
+                return xmlJsLib.js2xml(jsObject, options);
+            }
+            
+            // Fallback: Manual JS to XML conversion
+            return jsObjectToXml(jsObject);
+        }
+
+        function jsObjectToXml(obj, indent = 0) {
+            const spaces = ' '.repeat(indent);
+            let xml = '';
+            
+            if (typeof obj !== 'object' || obj === null) {
+                return String(obj);
+            }
+            
+            if (Array.isArray(obj)) {
+                obj.forEach(item => {
+                    xml += jsObjectToXml(item, indent);
+                });
+                return xml;
+            }
+            
+            const tagName = obj._name || 'root';
+            xml += `${spaces}<${tagName}`;
+            
+            if (obj._attributes) {
+                for (let [key, value] of Object.entries(obj._attributes)) {
+                    xml += ` ${key}="${value}"`;
+                }
+            }
+            
+            const hasChildren = Object.keys(obj).some(k => k !== '_name' && k !== '_attributes' && k !== '_text');
+            
+            if (obj._text && !hasChildren) {
+                xml += `>${obj._text}</${tagName}>\n`;
+            } else if (hasChildren || obj._text) {
+                xml += '>\n';
+                if (obj._text) {
+                    xml += `${spaces}    ${obj._text}\n`;
+                }
+                for (let [key, value] of Object.entries(obj)) {
+                    if (key !== '_name' && key !== '_attributes' && key !== '_text') {
+                        if (Array.isArray(value)) {
+                            value.forEach(item => {
+                                const wrapped = { _name: key, ...item };
+                                xml += jsObjectToXml(wrapped, indent + 4);
+                            });
+                        } else if (typeof value === 'object' && value !== null) {
+                            const wrapped = { _name: key, ...value };
+                            xml += jsObjectToXml(wrapped, indent + 4);
+                        } else {
+                            xml += `${spaces}    <${key}>${value}</${key}>\n`;
+                        }
+                    }
+                }
+                xml += `${spaces}</${tagName}>\n`;
+            } else {
+                xml += `/>\n`;
+            }
+            
+            return xml;
+        }
+
+        // --- Core Logic ---
+
+        function validateAndParse() {
+            const raw = inputData.value.trim();
+            if (!raw) {
+                showError("El campo de entrada está vacío.");
+                return;
+            }
+
+            const formatSelect = document.getElementById('inputFormat').value;
+            let format = formatSelect;
+            let parsed = null;
+
+            // Auto-detect if needed
+            if (format === 'auto') {
+                if (raw.startsWith('{') || raw.startsWith('[')) format = 'json';
+                else if (raw.startsWith('<')) format = 'xml';
+                else format = 'yaml';
+            }
+
+            try {
+                if (format === 'json') {
+                    parsed = JSON.parse(raw);
+                } else if (format === 'xml') {
+                    parsed = parseXML(raw);
+                } else if (format === 'yaml') {
+                    parsed = jsyaml.load(raw);
+                }
+                
+                currentData = raw;
+                currentFormat = format;
+                parsedObject = parsed;
+                updateStatus(true, format);
+                renderOutput('tree');
+
+            } catch (err) {
+                console.error(err);
+                let msg = err.message;
+                
+                if (err instanceof jsyaml.YAMLException) {
+                    msg = `YAML Error en línea ${err.mark.line + 1}, columna ${err.mark.column + 1}: ${err.reason}`;
+                } else if (err instanceof SyntaxError && format === 'json') {
+                    const match = err.message.match(/position (\d+)/);
+                    if (match) {
+                        const pos = parseInt(match[1]);
+                        const lines = raw.substring(0, pos).split('\n');
+                        msg = `JSON Error en línea ${lines.length}: ${err.message}`;
+                    }
+                }
+                showError(msg);
+                updateStatus(false, format);
+            }
+        }
+
+        function updateStatus(success, format) {
+            const statusEl = statusBar.querySelector('span');
+            if (success) {
+                statusEl.innerHTML = `<span class="text-green-400"><i class="fa-solid fa-check-circle mr-1"></i> Válid</span> - ${new Date().toLocaleTimeString()}`;
+                formatBadge.textContent = format.toUpperCase();
+                formatBadge.className = "px-2 py-0.5 rounded bg-green-600 text-white font-bold text-xs";
+            } else {
+                statusEl.innerHTML = `<span class="text-red-400"><i class="fa-solid fa-circle-xmark mr-1"></i> Inválido</span>`;
+                formatBadge.textContent = format.toUpperCase();
+                formatBadge.className = "px-2 py-0.5 rounded bg-red-600 text-white font-bold text-xs";
+            }
+        }
+
+        function showError(msg) {
+            errorContent.textContent = msg;
+            errorModal.classList.remove('hidden');
+        }
+
+        function closeError() {
+            errorModal.classList.add('hidden');
+        }
+
+        function clearAll() {
+            inputData.value = '';
+            outputContainer.innerHTML = `
+                <div class="h-full flex flex-col items-center justify-center text-slate-400">
+                    <i class="fa-solid fa-layer-group text-6xl mb-4 opacity-20"></i>
+                    <p>Los datos procesados aparecerán aquí</p>
+                </div>`;
+            statusBar.querySelector('span').textContent = "Estado: Esperando entrada...";
+            formatBadge.textContent = "--";
+            formatBadge.className = "px-2 py-0.5 rounded bg-slate-700 text-slate-400";
+            currentData = null;
+            parsedObject = null;
+        }
+
+        // --- Rendering ---
+
+        function switchView(viewName) {
+            ['tree', 'table', 'raw'].forEach(v => {
+                const btn = document.getElementById(`btn-${v}`);
+                if (v === viewName) {
+                    btn.className = "px-3 py-1 text-xs font-medium rounded-md bg-white shadow-sm text-blue-600 transition";
+                } else {
+                    btn.className = "px-3 py-1 text-xs font-medium rounded-md text-slate-600 hover:bg-slate-200 transition";
+                }
+            });
+            renderOutput(viewName);
+        }
+
+        function renderOutput(view) {
+            if (!parsedObject) return;
+            outputContainer.innerHTML = '';
+
+            if (view === 'tree') {
+                outputContainer.appendChild(createTreeElement(parsedObject));
+            } else if (view === 'table') {
+                outputContainer.appendChild(createTableElement(parsedObject));
+            } else if (view === 'raw') {
+                const pre = document.createElement('pre');
+                pre.className = "code-preview text-xs text-slate-700";
+                pre.textContent = JSON.stringify(parsedObject, null, 2);
+                outputContainer.appendChild(pre);
+            }
+        }
+
+        function createTreeElement(data, key = null) {
+            const container = document.createElement('div');
+            container.className = "mb-2";
+
+            if (key !== null) {
+                const keySpan = document.createElement('span');
+                keySpan.className = "tree-key mr-2 select-none cursor-pointer hover:text-blue-600";
+                keySpan.textContent = key + ": ";
+                container.appendChild(keySpan);
+            }
+
+            if (Array.isArray(data)) {
+                const arrIndicator = document.createElement('span');
+                arrIndicator.className = "text-slate-400 text-xs mr-2";
+                arrIndicator.textContent = `Array[${data.length}]`;
+                container.appendChild(arrIndicator);
+                
+                const list = document.createElement('div');
+                list.className = "tree-node mt-1";
+                data.forEach((item, index) => {
+                    list.appendChild(createTreeElement(item, index));
+                });
+                container.appendChild(list);
+            } else if (typeof data === 'object' && data !== null) {
+                const objIndicator = document.createElement('span');
+                objIndicator.className = "text-slate-400 text-xs mr-2";
+                objIndicator.textContent = "Object";
+                container.appendChild(objIndicator);
+
+                const list = document.createElement('div');
+                list.className = "tree-node mt-1";
+                Object.keys(data).forEach(k => {
+                    list.appendChild(createTreeElement(data[k], k));
+                });
+                container.appendChild(list);
+            } else {
+                const valSpan = document.createElement('span');
+                if (typeof data === 'string') valSpan.className = "tree-string";
+                else if (typeof data === 'number') valSpan.className = "tree-number";
+                else if (typeof data === 'boolean') valSpan.className = "tree-boolean";
+                else valSpan.className = "tree-null";
+                
+                valSpan.textContent = String(data);
+                container.appendChild(valSpan);
+            }
+
+            return container;
+        }
+
+        function createTableElement(data) {
+            const table = document.createElement('table');
+            table.className = "w-full text-left border-collapse text-sm";
+            
+            let isList = Array.isArray(data);
+            
+            // Handle XML structure
+            if (currentFormat === 'xml' && data.elements) {
+                data = xmlJsToPlainObject(data);
+                isList = Array.isArray(data);
+            }
+            
+            if (isList && data.length > 0 && typeof data[0] === 'object') {
+                const headers = new Set();
+                data.forEach(item => Object.keys(item).forEach(k => headers.add(k)));
+                const headerArray = Array.from(headers);
+                
+                const thead = document.createElement('thead');
+                const trHead = document.createElement('tr');
+                trHead.className = "bg-slate-100 border-b border-slate-200";
+                headerArray.forEach(h => {
+                    const th = document.createElement('th');
+                    th.className = "px-4 py-3 font-semibold text-slate-600";
+                    th.textContent = h;
+                    trHead.appendChild(th);
+                });
+                thead.appendChild(trHead);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                data.forEach(item => {
+                    const tr = document.createElement('tr');
+                    tr.className = "border-b border-slate-100 hover:bg-slate-50";
+                    headerArray.forEach(h => {
+                        const td = document.createElement('td');
+                        td.className = "px-4 py-3 text-slate-700";
+                        let val = item[h];
+                        if (typeof val === 'object') val = JSON.stringify(val);
+                        td.textContent = val !== undefined ? val : '-';
+                        tr.appendChild(td);
+                    });
+                    tbody.appendChild(tr);
+                });
+                table.appendChild(tbody);
+            } else {
+                const thead = document.createElement('thead');
+                const trHead = document.createElement('tr');
+                trHead.className = "bg-slate-100 border-b border-slate-200";
+                ['Clave', 'Valor'].forEach(h => {
+                    const th = document.createElement('th');
+                    th.className = "px-4 py-3 font-semibold text-slate-600";
+                    th.textContent = h;
+                    trHead.appendChild(th);
+                });
+                thead.appendChild(trHead);
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                const processObj = (obj, prefix = '') => {
+                    if (typeof obj !== 'object' || obj === null) {
+                        const tr = document.createElement('tr');
+                        tr.className = "border-b border-slate-100 hover:bg-slate-50";
+                        tr.innerHTML = `<td class="px-4 py-2 font-mono text-xs text-blue-600">${prefix || '(root)'}</td><td class="px-4 py-2 text-slate-700">${obj}</td>`;
+                        tbody.appendChild(tr);
+                        return;
+                    }
+                    Object.entries(obj).forEach(([k, v]) => {
+                        if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+                            processObj(v, prefix ? `${prefix}.${k}` : k);
+                        } else {
+                            const tr = document.createElement('tr');
+                            tr.className = "border-b border-slate-100 hover:bg-slate-50";
+                            tr.innerHTML = `<td class="px-4 py-2 font-mono text-xs text-blue-600">${prefix ? `${prefix}.${k}` : k}</td><td class="px-4 py-2 text-slate-700">${v}</td>`;
+                            tbody.appendChild(tr);
+                        }
+                    });
+                };
+                processObj(data);
+                table.appendChild(tbody);
+            }
+
+            const wrapper = document.createElement('div');
+            wrapper.className = "overflow-x-auto";
+            wrapper.appendChild(table);
+            return wrapper;
+        }
+
+        // --- Conversion & Export ---
+
+        function convertOutput(targetFormat) {
+            if (!parsedObject) {
+                alert("No hay datos para convertir");
+                return;
+            }
+            let result = "";
+            
+            try {
+                if (targetFormat === 'json') {
+                    result = JSON.stringify(parsedObject, null, 2);
+                } else if (targetFormat === 'xml') {
+                    result = convertToXML(parsedObject);
+                } else if (targetFormat === 'yaml') {
+                    result = jsyaml.dump(parsedObject);
+                }
+
+                inputData.value = result;
+                document.getElementById('inputFormat').value = targetFormat;
+                validateAndParse();
+            } catch (e) {
+                console.error(e);
+                alert("Error al convertir: " + e.message);
+            }
+        }
+
+        function downloadExcel() {
+            if (!parsedObject) {
+                alert("No hay datos para exportar");
+                return;
+            }
+
+            try {
+                let dataToExport = parsedObject;
+                
+                // Handle XML structure
+                if (currentFormat === 'xml' && dataToExport.elements) {
+                    dataToExport = xmlJsToPlainObject(dataToExport);
+                }
+                
+                if (!Array.isArray(dataToExport) && typeof dataToExport === 'object') {
+                    dataToExport = [dataToExport];
+                }
+
+                const flatten = (obj, prefix = '', res = {}) => {
+                    for (let key in obj) {
+                        if (obj.hasOwnProperty(key)) {
+                            const val = obj[key];
+                            const newKey = prefix ? `${prefix}.${key}` : key;
+                            if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+                                flatten(val, newKey, res);
+                            } else {
+                                res[newKey] = Array.isArray(val) ? JSON.stringify(val) : val;
+                            }
+                        }
+                    }
+                    return res;
+                };
+
+                const flatData = Array.isArray(dataToExport) 
+                    ? dataToExport.map(item => flatten(item)) 
+                    : [flatten(dataToExport)];
+
+                const ws = XLSX.utils.json_to_sheet(flatData);
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Datos");
+                XLSX.writeFile(wb, "datos_exportados.xlsx");
+            } catch (e) {
+                console.error(e);
+                alert("Error generando Excel: " + e.message);
+            }
+        }
+
+        function xmlJsToPlainObject(element) {
+            if (!element) return null;
+            
+            const result = {};
+            
+            if (element.name) {
+                result._name = element.name;
+            }
+            
+            if (element.attributes) {
+                result._attributes = element.attributes;
+            }
+            
+            if (element.elements) {
+                element.elements.forEach(child => {
+                    if (child.type === 'element') {
+                        const childData = xmlJsToPlainObject(child);
+                        if (result[child.name]) {
+                            if (!Array.isArray(result[child.name])) {
+                                result[child.name] = [result[child.name]];
+                            }
+                            result[child.name].push(childData);
+                        } else {
+                            result[child.name] = childData;
+                        }
+                    } else if (child.type === 'text') {
+                        result._text = child.text;
+                    }
+                });
+            }
+            
+            return result;
+        }
+
+    </script>
+</body>
+</html>
+
